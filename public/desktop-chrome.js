@@ -1,12 +1,24 @@
 /**
- * Desktop chrome — custom titlebar + theme-aware window icon (Tau Desktop / Tauri).
- * Window controls use official @tauri-apps window API (ACL-safe).
+ * Desktop chrome — custom titlebar (Tau Desktop / Tauri).
+ * - Window controls: official window API
+ * - Taskbar icon: ONLY via Rust OS SystemUsesLightTheme (never WebView matchMedia)
+ * - In-app marks (titlebar/sidebar): follow app UI theme
  */
 
 import { themes, getCurrentTheme } from './themes.js';
 
 let installed = false;
-let lastTaskbarLight = null; // true = light glyph (for dark OS taskbar)
+let maxUnlisten = null;
+
+const SVG_MAXIMIZE =
+  '<svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><rect x="1.5" y="1.5" width="7" height="7" stroke="currentColor" stroke-width="1.2" fill="none"/></svg>';
+
+/** Windows-style restore (two offset squares) */
+const SVG_RESTORE =
+  '<svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">' +
+  '<rect x="2.5" y="1.2" width="6" height="6" stroke="currentColor" stroke-width="1.15" fill="none"/>' +
+  '<path d="M1.5 3.2h5.2v5.2H1.5z" stroke="currentColor" stroke-width="1.15" fill="none"/>' +
+  '</svg>';
 
 export function isTauDesktop() {
   try {
@@ -34,21 +46,21 @@ function isDarkTheme(themeId = getCurrentTheme()) {
   return t ? !!t.dark : true;
 }
 
-/** Windows taskbar is usually dark in dark mode — need light glyph then. */
-function osPrefersDark() {
+async function updateMaximizeButton() {
+  const btn = document.getElementById('desktop-tb-max');
+  if (!btn) return;
+  let maximized = false;
   try {
-    return !!window.matchMedia?.('(prefers-color-scheme: dark)')?.matches;
+    maximized = !!(await (await appWindow()).isMaximized());
   } catch {
-    return true;
+    try {
+      // no-op fallback
+    } catch { /* ignore */ }
   }
-}
-
-/**
- * Taskbar icon: follow OS chrome, not app UI theme.
- * dark OS taskbar → light Pi; light OS taskbar → black Pi.
- */
-function taskbarWantsLightGlyph() {
-  return osPrefersDark();
+  btn.innerHTML = maximized ? SVG_RESTORE : SVG_MAXIMIZE;
+  btn.setAttribute('aria-label', maximized ? 'Restore' : 'Maximize');
+  btn.title = maximized ? '还原' : '最大化';
+  btn.dataset.maximized = maximized ? '1' : '0';
 }
 
 async function windowMinimize() {
@@ -70,20 +82,29 @@ async function windowToggleMaximize() {
     const win = await appWindow();
     if (typeof win.toggleMaximize === 'function') {
       await win.toggleMaximize();
-      return;
+    } else {
+      const max = await win.isMaximized();
+      if (max) await win.unmaximize();
+      else await win.maximize();
     }
-    const max = await win.isMaximized();
-    if (max) await win.unmaximize();
-    else await win.maximize();
-    return;
   } catch (e) {
     console.warn('[desktop-chrome] maximize via window API failed', e);
+    try {
+      await coreInvoke('window_toggle_maximize');
+    } catch (e2) {
+      console.warn('[desktop-chrome] maximize invoke failed', e2);
+    }
   }
-  try {
-    await coreInvoke('window_toggle_maximize');
-  } catch (e) {
-    console.warn('[desktop-chrome] maximize invoke failed', e);
-  }
+  // State settles after the shell animates
+  requestAnimationFrame(() => {
+    void updateMaximizeButton();
+  });
+  setTimeout(() => {
+    void updateMaximizeButton();
+  }, 80);
+  setTimeout(() => {
+    void updateMaximizeButton();
+  }, 200);
 }
 
 async function windowClose() {
@@ -112,13 +133,13 @@ function ensureTitlebar() {
       <span class="desktop-titlebar-title">Tau</span>
     </div>
     <div class="desktop-titlebar-controls">
-      <button type="button" class="desktop-tb-btn" id="desktop-tb-min" aria-label="Minimize" title="Minimize">
+      <button type="button" class="desktop-tb-btn" id="desktop-tb-min" aria-label="Minimize" title="最小化">
         <svg width="10" height="10" viewBox="0 0 10 10"><path d="M1 5h8" stroke="currentColor" stroke-width="1.2" fill="none"/></svg>
       </button>
-      <button type="button" class="desktop-tb-btn" id="desktop-tb-max" aria-label="Maximize" title="Maximize">
-        <svg width="10" height="10" viewBox="0 0 10 10"><rect x="1.5" y="1.5" width="7" height="7" stroke="currentColor" stroke-width="1.2" fill="none"/></svg>
+      <button type="button" class="desktop-tb-btn" id="desktop-tb-max" aria-label="Maximize" title="最大化" data-maximized="0">
+        ${SVG_MAXIMIZE}
       </button>
-      <button type="button" class="desktop-tb-btn desktop-tb-close" id="desktop-tb-close" aria-label="Close" title="Close">
+      <button type="button" class="desktop-tb-btn desktop-tb-close" id="desktop-tb-close" aria-label="Close" title="关闭">
         <svg width="10" height="10" viewBox="0 0 10 10"><path d="M2 2l6 6M8 2L2 8" stroke="currentColor" stroke-width="1.2" fill="none"/></svg>
       </button>
     </div>
@@ -128,7 +149,6 @@ function ensureTitlebar() {
   document.body.classList.add('tau-desktop');
 
   const controls = bar.querySelector('.desktop-titlebar-controls');
-  // Ensure controls never become drag regions
   controls?.style.setProperty('-webkit-app-region', 'no-drag');
   controls?.style.setProperty('app-region', 'no-drag');
 
@@ -144,19 +164,52 @@ function ensureTitlebar() {
       fn();
     });
   };
-  bind('desktop-tb-min', () => { void windowMinimize(); });
-  bind('desktop-tb-max', () => { void windowToggleMaximize(); });
-  bind('desktop-tb-close', () => { void windowClose(); });
+  bind('desktop-tb-min', () => {
+    void windowMinimize();
+  });
+  bind('desktop-tb-max', () => {
+    void windowToggleMaximize();
+  });
+  bind('desktop-tb-close', () => {
+    void windowClose();
+  });
 
-  // Double-click title to maximize (Windows habit)
   bar.querySelector('.desktop-titlebar-drag')?.addEventListener('dblclick', (e) => {
     if (e.target.closest('button')) return;
     void windowToggleMaximize();
   });
+
+  void updateMaximizeButton();
+  void wireMaximizeListeners();
+}
+
+async function wireMaximizeListeners() {
+  try {
+    if (maxUnlisten) {
+      maxUnlisten();
+      maxUnlisten = null;
+    }
+    const win = await appWindow();
+    if (typeof win.onResized === 'function') {
+      maxUnlisten = await win.onResized(() => {
+        void updateMaximizeButton();
+      });
+    }
+    if (typeof win.onScaleChanged === 'function') {
+      await win.onScaleChanged(() => {
+        void updateMaximizeButton();
+      });
+    }
+  } catch (e) {
+    console.debug('[desktop-chrome] maximize listeners', e);
+  }
+  // Fallback: poll rarely while focused (covers drag-maximize to top edge)
+  window.addEventListener('focus', () => {
+    void updateMaximizeButton();
+  });
 }
 
 function markUrl(darkUi, size) {
-  // darkUi true → light-colored Pi mark asset (*-dark.png naming = glyph for dark backgrounds)
   if (size === 192) {
     return darkUi ? '/icons/pi-mark-dark-192.png' : '/icons/pi-mark-light-192.png';
   }
@@ -172,6 +225,7 @@ function updateInAppMarks(darkUi) {
     link.type = 'image/png';
     document.head.appendChild(link);
   }
+  // Favicon for in-page only — does NOT drive Windows taskbar in Tauri
   link.href = href;
 
   const small = markUrl(darkUi, 32);
@@ -184,20 +238,25 @@ function updateInAppMarks(darkUi) {
   });
 }
 
-async function syncTaskbarIcon() {
-  const lightGlyph = taskbarWantsLightGlyph();
-  if (lastTaskbarLight === lightGlyph) return;
-  lastTaskbarLight = lightGlyph;
-  // dark=true in Rust means "use light glyph" (for dark chrome/taskbar)
+/**
+ * Re-apply taskbar icon from Windows SystemUsesLightTheme (Rust).
+ * Never pass WebView prefers-color-scheme — that often tracks Apps theme, not taskbar.
+ */
+async function syncTaskbarIconFromOs() {
   try {
-    await coreInvoke('set_theme_chrome', { dark: lightGlyph });
+    await coreInvoke('sync_taskbar_icon');
   } catch (e) {
-    console.warn('[desktop-chrome] set_theme_chrome failed', e);
+    // Older builds: set_theme_chrome now also ignores bool and uses OS
+    try {
+      await coreInvoke('set_theme_chrome', { dark: true });
+    } catch (e2) {
+      console.warn('[desktop-chrome] taskbar icon sync failed', e, e2);
+    }
   }
 }
 
 /**
- * Sync titlebar surface with app theme; taskbar icon with OS scheme.
+ * Sync titlebar/in-app marks with app theme; taskbar always from OS.
  */
 export async function syncDesktopChrome(themeId = getCurrentTheme()) {
   if (!isTauDesktop()) return;
@@ -213,11 +272,14 @@ export async function syncDesktopChrome(themeId = getCurrentTheme()) {
     meta.name = 'theme-color';
     document.head.appendChild(meta);
   }
-  const bg = getComputedStyle(document.documentElement).getPropertyValue('--bg-solid').trim()
-    || (darkUi ? '#212121' : '#f4f1ec');
+  const bg =
+    getComputedStyle(document.documentElement).getPropertyValue('--bg-solid').trim() ||
+    (darkUi ? '#212121' : '#f4f1ec');
   meta.content = bg;
 
-  await syncTaskbarIcon();
+  void updateMaximizeButton();
+  // Only once per install path for taskbar — OS-driven, not theme-driven
+  await syncTaskbarIconFromOs();
 }
 
 export function installDesktopChrome() {
@@ -227,14 +289,8 @@ export function installDesktopChrome() {
   void syncDesktopChrome();
 
   const obs = new MutationObserver(() => {
+    // Theme change: update in-app chrome only; still re-sync OS taskbar (idempotent)
     void syncDesktopChrome(document.documentElement.getAttribute('data-theme') || getCurrentTheme());
   });
   obs.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
-
-  try {
-    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
-      lastTaskbarLight = null;
-      void syncTaskbarIcon();
-    });
-  } catch { /* ignore */ }
 }

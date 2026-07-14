@@ -32,6 +32,8 @@ fn navigate_main(app: &AppHandle, port: u16) -> Result<(), String> {
         let _ = win.set_focus();
         let _ = win.unminimize();
         let _ = win.show();
+        // Re-assert OS taskbar icon after navigation (JS must not override with app theme)
+        let _ = apply_window_icon(app, os_wants_light_glyph());
         return Ok(());
     }
 
@@ -41,6 +43,7 @@ fn navigate_main(app: &AppHandle, port: u16) -> Result<(), String> {
         .decorations(false)
         .build()
         .map_err(|e| e.to_string())?;
+    let _ = apply_window_icon(app, os_wants_light_glyph());
     Ok(())
 }
 
@@ -170,11 +173,20 @@ fn window_close(app: AppHandle) -> Result<(), String> {
     win.close().map_err(|e| e.to_string())
 }
 
-/// `dark: true` ⇒ light-colored glyph (for dark taskbar / dark chrome).
-/// `dark: false` ⇒ black glyph (for light taskbar).
+/// Re-apply taskbar icon from **Windows SystemUsesLightTheme** only.
+/// WebView `prefers-color-scheme` tracks app theme and must not drive the taskbar.
+#[tauri::command]
+fn sync_taskbar_icon(app: AppHandle) -> Result<(), String> {
+    apply_window_icon(&app, os_wants_light_glyph())
+}
+
+/// Legacy: `dark` argument is **ignored** (kept for older frontend builds).
+/// Always uses OS system chrome so WebView scheme cannot flip to a black glyph
+/// on a dark taskbar after startup.
 #[tauri::command]
 fn set_theme_chrome(app: AppHandle, dark: bool) -> Result<(), String> {
-    apply_window_icon(&app, dark)
+    let _ = dark;
+    apply_window_icon(&app, os_wants_light_glyph())
 }
 
 fn focus_main(app: &AppHandle) {
@@ -218,7 +230,8 @@ pub fn run() {
             window_minimize,
             window_toggle_maximize,
             window_close,
-            set_theme_chrome
+            set_theme_chrome,
+            sync_taskbar_icon
         ])
         .setup(|app| {
             let handle = app.handle().clone();

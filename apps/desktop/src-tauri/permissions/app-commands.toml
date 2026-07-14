@@ -7,5 +7,6 @@ commands.allow = [
   "window_minimize",
   "window_toggle_maximize",
   "window_close",
-  "set_theme_chrome"
+  "set_theme_chrome",
+  "sync_taskbar_icon"
 ]

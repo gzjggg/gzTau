@@ -14,42 +14,52 @@ const refreshBtn = document.getElementById("refresh-btn");
 const titleIcon = document.getElementById("titlebar-icon");
 const brandMark = document.getElementById("brand-mark");
 
-function osDark() {
-  return !!window.matchMedia?.("(prefers-color-scheme: dark)")?.matches;
-}
+const SVG_MAXIMIZE =
+  '<svg width="10" height="10" viewBox="0 0 10 10"><rect x="1.5" y="1.5" width="7" height="7" stroke="currentColor" stroke-width="1.2" fill="none"/></svg>';
+const SVG_RESTORE =
+  '<svg width="10" height="10" viewBox="0 0 10 10">' +
+  '<rect x="2.5" y="1.2" width="6" height="6" stroke="currentColor" stroke-width="1.15" fill="none"/>' +
+  '<path d="M1.5 3.2h5.2v5.2H1.5z" stroke="currentColor" stroke-width="1.15" fill="none"/>' +
+  "</svg>";
 
-async function setChrome(darkOs) {
-  // dark OS → light glyph assets
-  document.documentElement.dataset.desktopChrome = darkOs ? "dark" : "light";
-  document.querySelector('meta[name="theme-color"]')?.setAttribute(
-    "content",
-    darkOs ? "#131316" : "#f4f1ec"
-  );
-  const src = darkOs ? "./assets/pi-mark-dark.png" : "./assets/pi-mark-light.png";
-  if (titleIcon) titleIcon.src = src;
-  if (brandMark) brandMark.src = src;
+// Chooser page uses dark chrome; in-app mark = light glyph. Taskbar from OS only.
+if (titleIcon) titleIcon.src = "./assets/pi-mark-dark.png";
+if (brandMark) brandMark.src = "./assets/pi-mark-dark.png";
+
+async function syncTaskbarFromOs() {
   try {
-    await invoke("set_theme_chrome", { dark: darkOs });
-  } catch (e) {
-    console.warn("set_theme_chrome", e);
+    await invoke("sync_taskbar_icon");
+  } catch {
+    try {
+      // legacy: now ignores bool, uses OS SystemUsesLightTheme
+      await invoke("set_theme_chrome", { dark: true });
+    } catch (e) {
+      console.warn(e);
+    }
   }
 }
+void syncTaskbarFromOs();
 
-setChrome(osDark());
-try {
-  window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", (e) => {
-    setChrome(e.matches);
-  });
-} catch { /* ignore */ }
+async function updateMaxBtn() {
+  const btn = document.getElementById("tb-max");
+  if (!btn) return;
+  let max = false;
+  try {
+    max = !!(await (await appWindow()).isMaximized());
+  } catch { /* ignore */ }
+  btn.innerHTML = max ? SVG_RESTORE : SVG_MAXIMIZE;
+  btn.title = max ? "还原" : "最大化";
+  btn.setAttribute("aria-label", max ? "Restore" : "Maximize");
+}
 
 async function winMin() {
   try {
     await (await appWindow()).minimize();
-  } catch (e1) {
+  } catch {
     try {
       await invoke("window_minimize");
-    } catch (e2) {
-      console.warn(e1, e2);
+    } catch (e) {
+      console.warn(e);
     }
   }
 }
@@ -59,22 +69,24 @@ async function winMax() {
     if (win.toggleMaximize) await win.toggleMaximize();
     else if (await win.isMaximized()) await win.unmaximize();
     else await win.maximize();
-  } catch (e1) {
+  } catch {
     try {
       await invoke("window_toggle_maximize");
-    } catch (e2) {
-      console.warn(e1, e2);
+    } catch (e) {
+      console.warn(e);
     }
   }
+  setTimeout(() => void updateMaxBtn(), 50);
+  setTimeout(() => void updateMaxBtn(), 200);
 }
 async function winClose() {
   try {
     await (await appWindow()).close();
-  } catch (e1) {
+  } catch {
     try {
       await invoke("window_close");
-    } catch (e2) {
-      console.warn(e1, e2);
+    } catch (e) {
+      console.warn(e);
     }
   }
 }
@@ -93,6 +105,12 @@ function bindBtn(id, fn) {
 bindBtn("tb-min", () => void winMin());
 bindBtn("tb-max", () => void winMax());
 bindBtn("tb-close", () => void winClose());
+void updateMaxBtn();
+appWindow()
+  .then((win) => {
+    if (win.onResized) win.onResized(() => void updateMaxBtn());
+  })
+  .catch(() => {});
 
 function shortPath(p) {
   if (!p) return "(unknown cwd)";
