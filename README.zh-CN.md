@@ -4,7 +4,7 @@
 
 在浏览器或**桌面窗口**中镜像 [Pi](https://github.com/badlogic/pi-mono) 终端会话的 Web UI。无需独立 Agent 服务——作为 Pi 扩展运行在现有进程内。
 
-本仓库为 [deflating/tau](https://github.com/deflating/tau) 的维护分支，增加了命令系统、Hephaestus 风格会话封面、侧栏会话切换、UI 打磨，以及可选的 **Tau Desktop** 壳（Tauri）。
+**gzTau**（[gzjggg/gzTau](https://github.com/gzjggg/gzTau)）是产品主仓：基于 Tau 的 Pi Web UI，含命令系统、会话封面、会话切换、UI 打磨与 **Tau Desktop**（Tauri）。源自 [deflating/tau](https://github.com/deflating/tau)，但按独立产品线维护（桌面化与品牌不走上游 PR 轨道）。
 
 ![Tau 深色模式](docs/images/dark.png)
 

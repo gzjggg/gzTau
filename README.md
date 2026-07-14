@@ -4,7 +4,7 @@
 
 A web UI that mirrors your [Pi](https://github.com/badlogic/pi-mono) terminal session in the browser **or a desktop window**. No separate agent server — it runs as a Pi extension inside your existing process.
 
-This repository is a maintained fork of [deflating/tau](https://github.com/deflating/tau) with a command system, Hephaestus-style session cover, session switching, UI polish, and an optional **Tau Desktop** shell (Tauri).
+**gzTau** ([gzjggg/gzTau](https://github.com/gzjggg/gzTau)) is the product tree: a Tau-based Pi web UI with command system, session cover, session switching, UI polish, and **Tau Desktop** (Tauri). It started from [deflating/tau](https://github.com/deflating/tau) but is maintained as its own line (desktop packaging and branding are not the upstream PR track).
 
 ![Tau dark mode](docs/images/dark.png)
 
