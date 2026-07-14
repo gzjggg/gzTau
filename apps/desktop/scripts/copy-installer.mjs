@@ -74,7 +74,7 @@ const manifest = {
   files,
   installHint:
     "Current-user NSIS → %LOCALAPPDATA%\\Programs\\Tau\\ (no admin). Unsigned personal build.",
-  note: "Product repo gzjggg/tau only — not tau-pr.",
+  note: "Product repo gzjggg/gzTau only — not tau-pr.",
 };
 fs.writeFileSync(path.join(distDir, "manifest.json"), JSON.stringify(manifest, null, 2));
 console.log("[package] manifest.json written for", product, version);

@@ -2,7 +2,7 @@
 
 Native window for the Tau web UI (Tauri 2 + WebView2 on Windows).
 
-**Product repo only** ([gzjggg/tau](https://github.com/gzjggg/tau)) — desktop work is **not** pushed to `tau-pr` / upstream.
+**Product repo only** ([gzjggg/gzTau](https://github.com/gzjggg/gzTau)) — desktop work is **not** pushed to `tau-pr` / upstream.
 
 ## Phases
 

@@ -35,7 +35,7 @@
     "category": "DeveloperTool",
     "shortDescription": "Desktop shell for Tau — Pi session mirror UI",
     "longDescription": "Tau Desktop is a native Windows window for the Tau web UI. It bundles the same public UI and connects to your Pi/Tau extension on 127.0.0.1. Closing the window does not exit Pi.",
-    "homepage": "https://github.com/gzjggg/tau",
+    "homepage": "https://github.com/gzjggg/gzTau",
     "resources": [
       "icons/icon-light.png",
       "icons/icon-dark.png",

@@ -61,7 +61,7 @@ Or on macOS/Linux:
 pi install npm:tau-mirror
 
 # This fork
-pi install git:github.com/gzjggg/tau
+pi install git:github.com/gzjggg/gzTau
 ```
 
 ## Usage
@@ -93,7 +93,7 @@ npm run build
 
 Then start Pi as usual; the extension launches `tau-desktop --port <port>` when `client` is `desktop` (default). See [apps/desktop/README.md](./apps/desktop/README.md).
 
-Desktopization is **product-only** (`gzjggg/tau`); it is **not** mirrored to `tau-pr` / upstream.
+Desktopization is **product-only** (`gzjggg/gzTau`); it is **not** mirrored to `tau-pr` / upstream.
 
 **Installer (D3):** `cd apps/desktop && npm run package` → `dist/desktop/Tau_*_x64-setup.exe` (unsigned). See [docs/desktop-install.md](./docs/desktop-install.md).
 
@@ -238,7 +238,7 @@ No separate server process. The extension auto-loads with Pi and shuts down when
 ## Development
 
 ```bash
-git clone https://github.com/gzjggg/tau.git
+git clone https://github.com/gzjggg/gzTau.git
 cd tau
 # Point packages[] or TAU_STATIC_DIR at this tree
 TAU_STATIC_DIR=$(pwd)/public pi   # Unix

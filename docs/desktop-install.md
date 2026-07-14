@@ -1,6 +1,6 @@
 # Tau Desktop — install & release (D3)
 
-Product repository only: [gzjggg/tau](https://github.com/gzjggg/tau).  
+Product repository only: [gzjggg/gzTau](https://github.com/gzjggg/gzTau).  
 **Do not** ship desktop artifacts via `tau-pr` / upstream PRs.
 
 ## What you get

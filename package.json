@@ -13,13 +13,13 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/gzjggg/tau.git"
+    "url": "https://github.com/gzjggg/gzTau.git"
   },
   "pi": {
     "extensions": [
       "./extensions/mirror-server.ts"
     ],
-    "image": "https://raw.githubusercontent.com/gzjggg/tau/main/docs/images/dark.png"
+    "image": "https://raw.githubusercontent.com/gzjggg/gzTau/main/docs/images/dark.png"
   },
   "dependencies": {
     "ws": "^8.16.0",

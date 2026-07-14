@@ -61,7 +61,7 @@ macOS / Linux：
 pi install npm:tau-mirror
 
 # 本分支
-pi install git:github.com/gzjggg/tau
+pi install git:github.com/gzjggg/gzTau
 ```
 
 ## 使用
@@ -93,7 +93,7 @@ npm run build
 
 之后正常启动 Pi；扩展在 `client` 为 `desktop`（默认）时会执行 `tau-desktop --port <port>`。详见 [apps/desktop/README.md](./apps/desktop/README.md)。
 
-桌面化仅维护在产品仓 `gzjggg/tau`，**不**同步到 `tau-pr` / 上游。
+桌面化仅维护在产品仓 `gzjggg/gzTau`，**不**同步到 `tau-pr` / 上游。
 
 **安装包（D3）：** `cd apps/desktop && npm run package` → `dist/desktop/Tau_*_x64-setup.exe`（未签名，个人使用）。详见 [docs/desktop-install.md](./docs/desktop-install.md)。
 
@@ -238,7 +238,7 @@ Tau 是 [Pi 扩展](https://github.com/badlogic/pi-mono#extensions)，在 Pi 进
 ## 开发
 
 ```bash
-git clone https://github.com/gzjggg/tau.git
+git clone https://github.com/gzjggg/gzTau.git
 cd tau
 # 用 packages[] 或 TAU_STATIC_DIR 指向本仓库
 TAU_STATIC_DIR=$(pwd)/public pi   # Unix
