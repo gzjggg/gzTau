@@ -82,7 +82,7 @@ pi install git:github.com/gzjggg/tau
 
 ### Desktop app (optional)
 
-Windows shell lives under [`apps/desktop`](./apps/desktop) (Tauri 2). Build once:
+Windows shell lives under [`apps/desktop`](./apps/desktop) (Tauri 2). It **bundles** the same `public/` UI and talks to Tau on loopback.
 
 ```bash
 cd apps/desktop
@@ -93,7 +93,7 @@ npm run build
 
 Then start Pi as usual; the extension launches `tau-desktop --port <port>` when `client` is `desktop` (default). See [apps/desktop/README.md](./apps/desktop/README.md).
 
-Desktopization is **product-only** (`gzjggg/tau`); it is not mirrored to the upstream PR fork.
+Desktopization is **product-only** (`gzjggg/tau`); it is **not** mirrored to `tau-pr` / upstream.
 
 ## Fork highlights
 

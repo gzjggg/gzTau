@@ -11,13 +11,17 @@ let installed = false;
 let maxUnlisten = null;
 
 const SVG_MAXIMIZE =
-  '<svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><rect x="1.5" y="1.5" width="7" height="7" stroke="currentColor" stroke-width="1.2" fill="none"/></svg>';
+  '<svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">' +
+  '<rect x="1.75" y="1.75" width="8.5" height="8.5" rx="1.6" ry="1.6" stroke="currentColor" stroke-width="1.2" fill="none"/>' +
+  '</svg>';
 
-/** Windows-style restore (two offset squares) */
+/** Restore: two overlapping rounded squares (matches system-style dual-window glyph) */
 const SVG_RESTORE =
-  '<svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">' +
-  '<rect x="2.5" y="1.2" width="6" height="6" stroke="currentColor" stroke-width="1.15" fill="none"/>' +
-  '<path d="M1.5 3.2h5.2v5.2H1.5z" stroke="currentColor" stroke-width="1.15" fill="none"/>' +
+  '<svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">' +
+  // back (upper-right)
+  '<rect x="3.4" y="1.5" width="7.1" height="7.1" rx="1.55" ry="1.55" stroke="currentColor" stroke-width="1.15" fill="none"/>' +
+  // front (lower-left) — filled with current titlebar bg via CSS var fallback to opaque
+  '<rect x="1.5" y="3.4" width="7.1" height="7.1" rx="1.55" ry="1.55" stroke="currentColor" stroke-width="1.15" fill="var(--bg-solid, #212121)"/>' +
   '</svg>';
 
 export function isTauDesktop() {

@@ -11,11 +11,37 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Tau">
   <meta name="theme-color" content="#212121">
-  <link rel="stylesheet" href="style.css?v=1.2.3">
+  <link rel="stylesheet" href="style.css?v=1.2.4">
   <!-- KaTeX for math rendering -->
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.21/dist/katex.min.css">
   <script src="https://cdn.jsdelivr.net/npm/katex@0.16.21/dist/katex.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/katex@0.16.21/dist/contrib/auto-render.min.js"></script>
+  <!-- Desktop: resolve loopback port before modules (bundled UI + remote API) -->
+  <script>
+    window.__TAU_BOOT__ = (async function () {
+      try {
+        var q = new URLSearchParams(location.search).get('tauPort');
+        if (q && /^\d+$/.test(q)) {
+          window.__TAU_ENDPOINT__ = {
+            http: 'http://127.0.0.1:' + q,
+            ws: 'ws://127.0.0.1:' + q + '/ws',
+          };
+          return;
+        }
+      } catch (e) {}
+      try {
+        if (window.__TAURI__ && window.__TAURI__.core && window.__TAURI__.core.invoke) {
+          var port = await window.__TAURI__.core.invoke('get_active_port');
+          if (port) {
+            window.__TAU_ENDPOINT__ = {
+              http: 'http://127.0.0.1:' + port,
+              ws: 'ws://127.0.0.1:' + port + '/ws',
+            };
+          }
+        }
+      } catch (e) {}
+    })();
+  </script>
 </head>
 <body>
   <div class="app-layout">
@@ -229,7 +255,10 @@
   <!-- Dialog Container -->
   <div id="dialog-container" class="hidden"></div>
 
-  <!-- Scripts -->
-  <script type="module" src="app.js?v=1.2.3"></script>
+  <!-- Scripts: wait for desktop port boot, then load app -->
+  <script type="module">
+    await (window.__TAU_BOOT__ || Promise.resolve());
+    await import('./app.js?v=1.2.4');
+  </script>
 </body>
 </html>

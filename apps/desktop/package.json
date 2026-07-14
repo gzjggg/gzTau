@@ -1,8 +1,8 @@
 {
   "name": "tau-desktop",
   "private": true,
-  "version": "0.1.1",
-  "description": "Tau desktop shell — discovers Pi/Tau instances and opens a native window",
+  "version": "0.2.0",
+  "description": "Tau desktop shell — bundled public UI + loopback Tau API (product repo only)",
   "type": "module",
   "scripts": {
     "tauri": "tauri",

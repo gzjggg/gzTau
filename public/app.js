@@ -20,14 +20,22 @@ import {
   setSessionCoverVisibility,
   sessionCoverState,
 } from './session-cover.js';
-import { installDesktopChrome, syncDesktopChrome } from './desktop-chrome.js';
+import { installDesktopChrome, syncDesktopChrome, isTauDesktop } from './desktop-chrome.js';
+import {
+  getWsUrl,
+  installApiFetchRewrite,
+  setTauEndpoint,
+  getTauHttpBase,
+} from './tau-endpoint.js';
+
+// Browser same-origin OR desktop loopback API base
+installApiFetchRewrite();
 
 // Tau Desktop: custom titlebar + theme-aware window icon
 installDesktopChrome();
 
-// Initialize components
-const wsUrl = (location.protocol === 'https:' ? 'wss:' : 'ws:') + '//' + location.host + '/ws';
-const wsClient = new WebSocketClient(wsUrl);
+// Initialize components (WS URL respects __TAU_ENDPOINT__ / ?tauPort=)
+const wsClient = new WebSocketClient(getWsUrl());
 const state = new StateManager();
 const messagesEl = document.getElementById('messages');
 const messagesScrollEl = document.getElementById('messages-scroll') || messagesEl;
@@ -2595,6 +2603,63 @@ document.querySelector('.mode-link:first-child')?.addEventListener('click', () =
   hideLauncher();
 });
 
+/** Rebind WS after desktop connects to a Tau port (bundled UI, D2). */
+function reconnectToTauPort(port) {
+  if (!port) return;
+  setTauEndpoint(port);
+  installApiFetchRewrite();
+  try {
+    wsClient.url = getWsUrl();
+    wsClient.disconnect();
+    wsClient.connect();
+  } catch (e) {
+    console.warn('[Tau] reconnect failed', e);
+  }
+  sidebar.loadSessions().then(() => {
+    if (isMirrorMode) updateMirrorLiveIndicator();
+  });
+  void initLauncher();
+}
+
+async function initDesktopBackendLink() {
+  if (!isTauDesktop()) return;
+  try {
+    const core = window.__TAURI__?.core;
+    const ev = window.__TAURI__?.event;
+    if (core?.invoke) {
+      const port = await core.invoke('get_active_port');
+      if (port) reconnectToTauPort(port);
+      else {
+        // Multi / zero instance: try list and auto-pick single
+        try {
+          const list = await core.invoke('list_tau_instances');
+          if (Array.isArray(list) && list.length === 1) {
+            await core.invoke('open_instance', { port: list[0].port });
+            reconnectToTauPort(list[0].port);
+          } else if (Array.isArray(list) && list.length > 1) {
+            // open first healthy for now; chooser can be refined later
+            console.info('[Tau] multiple instances; using first', list[0].port);
+            await core.invoke('open_instance', { port: list[0].port });
+            reconnectToTauPort(list[0].port);
+          }
+        } catch (e) {
+          console.warn('[Tau] instance list', e);
+        }
+      }
+    }
+    if (ev?.listen) {
+      await ev.listen('tau-port', (event) => {
+        const p = event?.payload;
+        if (p) reconnectToTauPort(p);
+      });
+    }
+  } catch (e) {
+    console.warn('[Tau] desktop backend link', e);
+  }
+}
+
+void initDesktopBackendLink();
+
 wsClient.connect();
 messageRenderer.renderWelcome();
 sidebar.loadSessions().then(() => {
@@ -2602,8 +2667,12 @@ sidebar.loadSessions().then(() => {
 });
 initLauncher();
 
-// Register service worker for PWA
-if ('serviceWorker' in navigator) {
+// PWA service worker — browser only (not Tau Desktop asset shell)
+if (
+  'serviceWorker' in navigator &&
+  !isTauDesktop() &&
+  (location.protocol === 'http:' || location.protocol === 'https:')
+) {
   navigator.serviceWorker.register('/sw.js').catch(() => {});
 }
 

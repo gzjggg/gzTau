@@ -82,7 +82,7 @@ pi install git:github.com/gzjggg/tau
 
 ### 桌面应用（可选）
 
-Windows 桌面壳在 [`apps/desktop`](./apps/desktop)（Tauri 2）。构建一次：
+Windows 桌面壳在 [`apps/desktop`](./apps/desktop)（Tauri 2）。**内置打包**同一套 `public/` UI，通过本机 loopback 连接 Tau。
 
 ```bash
 cd apps/desktop
@@ -93,7 +93,7 @@ npm run build
 
 之后正常启动 Pi；扩展在 `client` 为 `desktop`（默认）时会执行 `tau-desktop --port <port>`。详见 [apps/desktop/README.md](./apps/desktop/README.md)。
 
-桌面化仅维护在产品仓 `gzjggg/tau`，**不同步**到上游 PR 用的 `tau-pr`。
+桌面化仅维护在产品仓 `gzjggg/tau`，**不**同步到 `tau-pr` / 上游。
 
 ## 本分支亮点
 

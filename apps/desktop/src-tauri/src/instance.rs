@@ -108,10 +108,6 @@ pub fn list_instances() -> Vec<TauInstance> {
     out
 }
 
-pub fn loopback_url(port: u16) -> String {
-    format!("http://127.0.0.1:{port}/")
-}
-
 pub fn port_healthy(port: u16) -> bool {
     health_ok(port)
 }

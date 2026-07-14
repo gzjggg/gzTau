@@ -1,14 +1,16 @@
 mod instance;
 
-use instance::{list_instances, loopback_url, port_healthy, TauInstance};
-use std::sync::OnceLock;
-use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder};
-use url::Url;
+use instance::{list_instances, port_healthy, TauInstance};
+use std::sync::Mutex;
+use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
 
 /// Baked-in icons so taskbar switch works even if resource_dir paths differ.
 /// icon-dark.png = light glyph (for dark taskbar); icon-light.png = black glyph.
 static ICON_LIGHT_GLYPH: &[u8] = include_bytes!("../icons/icon-dark.png");
 static ICON_DARK_GLYPH: &[u8] = include_bytes!("../icons/icon-light.png");
+
+/// Active Tau mirror port for the bundled UI (D2 — no navigate to external page).
+static ACTIVE_PORT: Mutex<Option<u16>> = Mutex::new(None);
 
 fn port_from_args() -> Option<u16> {
     let mut args = std::env::args().skip(1);
@@ -23,28 +25,14 @@ fn port_from_args() -> Option<u16> {
     None
 }
 
-fn navigate_main(app: &AppHandle, port: u16) -> Result<(), String> {
-    let url_str = loopback_url(port);
-    let parsed = Url::parse(&url_str).map_err(|e| e.to_string())?;
-
-    if let Some(win) = app.get_webview_window("main") {
-        win.navigate(parsed).map_err(|e| e.to_string())?;
-        let _ = win.set_focus();
-        let _ = win.unminimize();
-        let _ = win.show();
-        // Re-assert OS taskbar icon after navigation (JS must not override with app theme)
-        let _ = apply_window_icon(app, os_wants_light_glyph());
-        return Ok(());
+fn set_active_port(port: u16) {
+    if let Ok(mut g) = ACTIVE_PORT.lock() {
+        *g = Some(port);
     }
+}
 
-    WebviewWindowBuilder::new(app, "main", WebviewUrl::External(parsed))
-        .title("Tau")
-        .inner_size(1280.0, 860.0)
-        .decorations(false)
-        .build()
-        .map_err(|e| e.to_string())?;
-    let _ = apply_window_icon(app, os_wants_light_glyph());
-    Ok(())
+fn get_active_port_val() -> Option<u16> {
+    ACTIVE_PORT.lock().ok().and_then(|g| *g)
 }
 
 fn image_from_bytes(bytes: &[u8]) -> Result<tauri::image::Image<'static>, String> {
@@ -66,11 +54,10 @@ fn apply_window_icon(app: &AppHandle, light_glyph: bool) -> Result<(), String> {
     Ok(())
 }
 
-/// Windows: AppsUseLightTheme == 0 ⇒ dark mode (dark taskbar → need light glyph).
+/// Windows: SystemUsesLightTheme == 0 ⇒ dark taskbar → light glyph.
 #[cfg(windows)]
 fn os_wants_light_glyph() -> bool {
     use std::ptr::null_mut;
-    // Prefer registry; fall back to true (dark-taskbar-safe)
     type HKEY = *mut std::ffi::c_void;
     const HKEY_CURRENT_USER: HKEY = 0x80000001u32 as HKEY;
     const KEY_READ: u32 = 0x20019;
@@ -117,7 +104,6 @@ fn os_wants_light_glyph() -> bool {
         if ok != 0 {
             return true;
         }
-        // 0 = dark system chrome → light glyph
         data == 0
     }
 }
@@ -127,13 +113,8 @@ fn os_wants_light_glyph() -> bool {
     true
 }
 
-#[tauri::command]
-fn list_tau_instances() -> Vec<TauInstance> {
-    list_instances()
-}
-
-#[tauri::command]
-fn open_instance(app: AppHandle, port: u16) -> Result<(), String> {
+/// Bind active port, notify UI, keep **bundled** public/ shell (D2).
+fn connect_port(app: &AppHandle, port: u16) -> Result<(), String> {
     if port == 0 {
         return Err("invalid port".into());
     }
@@ -142,7 +123,25 @@ fn open_instance(app: AppHandle, port: u16) -> Result<(), String> {
             "No healthy Tau at 127.0.0.1:{port}. Start Pi with Tau first."
         ));
     }
-    navigate_main(&app, port)
+    set_active_port(port);
+    let _ = app.emit("tau-port", port);
+    let _ = apply_window_icon(app, os_wants_light_glyph());
+    Ok(())
+}
+
+#[tauri::command]
+fn list_tau_instances() -> Vec<TauInstance> {
+    list_instances()
+}
+
+#[tauri::command]
+fn get_active_port() -> Option<u16> {
+    get_active_port_val()
+}
+
+#[tauri::command]
+fn open_instance(app: AppHandle, port: u16) -> Result<(), String> {
+    connect_port(&app, port)
 }
 
 #[tauri::command]
@@ -173,16 +172,12 @@ fn window_close(app: AppHandle) -> Result<(), String> {
     win.close().map_err(|e| e.to_string())
 }
 
-/// Re-apply taskbar icon from **Windows SystemUsesLightTheme** only.
-/// WebView `prefers-color-scheme` tracks app theme and must not drive the taskbar.
 #[tauri::command]
 fn sync_taskbar_icon(app: AppHandle) -> Result<(), String> {
     apply_window_icon(&app, os_wants_light_glyph())
 }
 
-/// Legacy: `dark` argument is **ignored** (kept for older frontend builds).
-/// Always uses OS system chrome so WebView scheme cannot flip to a black glyph
-/// on a dark taskbar after startup.
+/// Legacy: `dark` ignored — always OS system taskbar theme.
 #[tauri::command]
 fn set_theme_chrome(app: AppHandle, dark: bool) -> Result<(), String> {
     let _ = dark;
@@ -197,10 +192,20 @@ fn focus_main(app: &AppHandle) {
     }
 }
 
-static INIT_ICON: OnceLock<()> = OnceLock::new();
-
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Resolve port before the webview boots so get_active_port works on first paint
+    if let Some(port) = port_from_args() {
+        if port_healthy(port) {
+            set_active_port(port);
+        }
+    } else {
+        let healthy = list_instances();
+        if healthy.len() == 1 {
+            set_active_port(healthy[0].port);
+        }
+    }
+
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
             let port = {
@@ -219,13 +224,14 @@ pub fn run() {
                 found
             };
             if let Some(port) = port {
-                let _ = navigate_main(app, port);
+                let _ = connect_port(app, port);
             } else {
                 focus_main(app);
             }
         }))
         .invoke_handler(tauri::generate_handler![
             list_tau_instances,
+            get_active_port,
             open_instance,
             window_minimize,
             window_toggle_maximize,
@@ -235,23 +241,24 @@ pub fn run() {
         ])
         .setup(|app| {
             let handle = app.handle().clone();
-            // Default: OS dark taskbar → light glyph (fixes invisible black icon)
-            let light = os_wants_light_glyph();
-            let _ = apply_window_icon(&handle, light);
-            INIT_ICON.get_or_init(|| ());
+            let _ = apply_window_icon(&handle, os_wants_light_glyph());
 
-            let forced = port_from_args();
+            // Ensure main window exists with bundled public UI (D2)
+            if app.get_webview_window("main").is_none() {
+                let _ = WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
+                    .title("Tau")
+                    .inner_size(1280.0, 860.0)
+                    .decorations(false)
+                    .build();
+            }
+
+            // Re-emit active port after UI mounts
+            let handle2 = handle.clone();
             std::thread::spawn(move || {
-                std::thread::sleep(std::time::Duration::from_millis(250));
-                // Re-apply icon after window fully ready
-                let _ = apply_window_icon(&handle, os_wants_light_glyph());
-                if let Some(port) = forced {
-                    let _ = navigate_main(&handle, port);
-                    return;
-                }
-                let healthy = list_instances();
-                if healthy.len() == 1 {
-                    let _ = navigate_main(&handle, healthy[0].port);
+                std::thread::sleep(std::time::Duration::from_millis(400));
+                let _ = apply_window_icon(&handle2, os_wants_light_glyph());
+                if let Some(port) = get_active_port_val() {
+                    let _ = handle2.emit("tau-port", port);
                 }
             });
             Ok(())
