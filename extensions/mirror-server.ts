@@ -13,7 +13,7 @@
  *
  * NEVER call process.exit from this file — browser close must not kill Pi.
  */
-const TAU_BUILD_ID = "tau-2026-07-14-safe-b-v1";
+const TAU_BUILD_ID = "tau-2026-07-14-desktop-d1-v1";
 
 /** Routine logs only when TAU_DEBUG=1 (keeps TUI clean) */
 const TAU_DEBUG =
@@ -50,12 +50,19 @@ function isLoopbackHost(host: string): boolean {
 }
 
 // Load tau settings from ~/.pi/agent/settings.json (falls back to env vars)
+/** How to open the UI after mirror server listens. */
+export type TauClientKind = "desktop" | "browser" | "none";
+
 function loadTauSettings(): {
   port: number;
   host: string;
   remoteEnabled: boolean;
   autoStart: boolean;
   autoOpenBrowser: boolean;
+  /** desktop | browser | none — default desktop with browser fallback */
+  client: TauClientKind;
+  desktopFallback: "browser" | "none";
+  desktopPath?: string;
   user: string;
   pass: string;
   authEnabled?: boolean;
@@ -112,6 +119,23 @@ function loadTauSettings(): {
         : "127.0.0.1";
   }
 
+  // Client: TAU_CLIENT > settings.client > desktop (with browser fallback)
+  const clientEnv = (process.env.TAU_CLIENT || "").toLowerCase();
+  let client: TauClientKind =
+    clientEnv === "desktop" || clientEnv === "browser" || clientEnv === "none"
+      ? (clientEnv as TauClientKind)
+      : settings.client === "desktop" || settings.client === "browser" || settings.client === "none"
+        ? settings.client
+        : "desktop";
+  // Legacy: autoOpenBrowser false alone means "don't auto-open anything"
+  // (handled by TAU_AUTO_OPEN / autoOpenBrowser gate below)
+  const fallbackEnv = (process.env.TAU_DESKTOP_FALLBACK || "").toLowerCase();
+  const desktopFallback: "browser" | "none" =
+    fallbackEnv === "none" || settings.desktopFallback === "none" ? "none" : "browser";
+  const desktopPath =
+    process.env.TAU_DESKTOP_PATH ||
+    (typeof settings.desktopPath === "string" ? settings.desktopPath : undefined);
+
   return {
     // 38471 — uncommon port to avoid clashes with typical dev servers (3000/3001/5173…)
     port: parseInt(process.env.TAU_MIRROR_PORT || String(settings.port || "38471"), 10),
@@ -122,6 +146,9 @@ function loadTauSettings(): {
       settings.disabled === true
     ),
     autoOpenBrowser,
+    client,
+    desktopFallback,
+    desktopPath,
     user: process.env.TAU_USER || settings.user || "",
     pass: process.env.TAU_PASS || settings.pass || "",
     authEnabled: settings.authEnabled,
@@ -152,6 +179,75 @@ const HOST = TAU_SETTINGS.host;
 const TAU_REMOTE_ENABLED = TAU_SETTINGS.remoteEnabled;
 const TAU_AUTO_START = TAU_SETTINGS.autoStart;
 const TAU_AUTO_OPEN = TAU_SETTINGS.autoOpenBrowser;
+
+/** Resolve tau-desktop executable for ClientLauncher (Windows first). */
+function findDesktopExecutable(): string | null {
+  // @ts-ignore — __dirname provided by jiti
+  const extDir = typeof __dirname !== "undefined" ? __dirname : path.dirname(process.argv[1] || "");
+  const pkgRoot = path.resolve(extDir, "..");
+  const home = os.homedir() || process.env.USERPROFILE || "";
+  const candidates = [
+    TAU_SETTINGS.desktopPath,
+    process.env.TAU_DESKTOP_PATH,
+    // Dev / local builds next to this package
+    path.join(pkgRoot, "apps", "desktop", "src-tauri", "target", "release", "tau-desktop.exe"),
+    path.join(pkgRoot, "apps", "desktop", "src-tauri", "target", "debug", "tau-desktop.exe"),
+    path.join(pkgRoot, "apps", "desktop", "src-tauri", "target", "release", "tau-desktop"),
+    path.join(pkgRoot, "apps", "desktop", "src-tauri", "target", "debug", "tau-desktop"),
+    // Common user install locations (Windows)
+    path.join(home, "AppData", "Local", "Programs", "Tau", "tau-desktop.exe"),
+    path.join(home, "AppData", "Local", "Tau", "tau-desktop.exe"),
+  ].filter((p): p is string => typeof p === "string" && p.length > 0);
+
+  for (const c of candidates) {
+    try {
+      if (fs.existsSync(c)) return c;
+    } catch { /* ignore */ }
+  }
+  return null;
+}
+
+/**
+ * Open desktop app and/or browser after server is ready.
+ * Default: try desktop, fall back to browser. Never kills Pi on failure.
+ */
+function openTauClient(localUrl: string, port: number): void {
+  const kind = TAU_SETTINGS.client;
+  if (kind === "none") {
+    mlog("[Mirror] client=none — skip auto-open");
+    return;
+  }
+
+  if (kind === "browser") {
+    openInBrowser(localUrl);
+    return;
+  }
+
+  // desktop (default)
+  const exe = findDesktopExecutable();
+  if (exe) {
+    try {
+      const { spawn } = require("node:child_process") as typeof import("node:child_process");
+      const child = spawn(exe, ["--port", String(port)], {
+        detached: true,
+        stdio: "ignore",
+        windowsHide: true,
+      });
+      child.unref();
+      mlog(`[Mirror] Launched desktop: ${exe} --port ${port}`);
+      return;
+    } catch (e) {
+      console.warn("[Mirror] Desktop launch failed:", (e as Error).message);
+    }
+  } else {
+    mlog("[Mirror] tau-desktop not found — see apps/desktop README");
+  }
+
+  if (TAU_SETTINGS.desktopFallback === "browser") {
+    mlog("[Mirror] Falling back to browser");
+    openInBrowser(localUrl);
+  }
+}
 const AUTH_USER = TAU_SETTINGS.user;
 const AUTH_PASS = TAU_SETTINGS.pass;
 const AUTH_CONFIGURED = !!(AUTH_USER && AUTH_PASS);
@@ -2813,13 +2909,13 @@ img{border-radius:12px}a{color:#b87a5c;font-size:18px;margin-top:16px}p{color:rg
         ctx.ui.notify(`Tau ${mirrorUrl}`, "info");
       } catch { /* ignore */ }
 
-      // Auto-open browser once — delayed so leftover-tab beacons cannot race startup
+      // Auto-open desktop (or browser fallback) once — delayed for leftover-tab beacons
       if (TAU_AUTO_OPEN && !browserOpenedOnce) {
         browserOpenedOnce = true;
         const localUrl = `http://127.0.0.1:${port}`;
         setTimeout(() => {
-          mlog(`[Mirror] Auto-opening browser: ${localUrl}`);
-          openInBrowser(localUrl);
+          mlog(`[Mirror] Auto-opening client (${TAU_SETTINGS.client}): ${localUrl}`);
+          openTauClient(localUrl, port);
         }, 2000);
       }
 

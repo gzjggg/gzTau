@@ -6,3 +6,9 @@ node_modules/
 
 # Pi session exports
 pi-session-*.html
+
+# Tau desktop (Tauri / Rust)
+apps/desktop/src-tauri/target/
+apps/desktop/node_modules/
+apps/desktop/src-tauri/gen/
+

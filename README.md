@@ -2,9 +2,9 @@
 
 **English** | [简体中文](./README.zh-CN.md)
 
-A web UI that mirrors your [Pi](https://github.com/badlogic/pi-mono) terminal session in the browser. No separate server — it runs as a Pi extension inside your existing process.
+A web UI that mirrors your [Pi](https://github.com/badlogic/pi-mono) terminal session in the browser **or a desktop window**. No separate agent server — it runs as a Pi extension inside your existing process.
 
-This repository is a maintained fork of [deflating/tau](https://github.com/deflating/tau) with a command system, Hephaestus-style session cover, session switching, and UI polish.
+This repository is a maintained fork of [deflating/tau](https://github.com/deflating/tau) with a command system, Hephaestus-style session cover, session switching, UI polish, and an optional **Tau Desktop** shell (Tauri).
 
 ![Tau dark mode](docs/images/dark.png)
 
@@ -66,18 +66,34 @@ pi install git:github.com/gzjggg/tau
 
 ## Usage
 
-1. Start Pi normally in your terminal
-2. Tau opens your browser automatically at `http://127.0.0.1:38471` (status bar also shows the LAN URL)
-3. That’s it
+1. Start Pi normally in your terminal  
+2. Tau opens the **desktop app** if built, otherwise the browser, at `http://127.0.0.1:38471`  
+3. That’s it  
 
 | Command / action | Description |
 |------------------|-------------|
-| `/tau` | Re-open the web UI |
-| `/qr` | Show a phone QR code |
+| `/tau` | Re-open the web UI (browser) |
+| `/qr` | Show a phone QR code (needs remote mode) |
 | `/tau-start` / `/tau-stop` | Start or stop the mirror server |
 | `/tau-switch` | Arm the session-switch hook (run once if sidebar switch fails) |
-| Close the Tau browser tab | Shuts down the Tau port and exits Pi (sendBeacon) |
-| `TAU_AUTO_OPEN=0` | Disable auto-open browser |
+| Close desktop / browser | Does **not** exit Pi by default |
+| `TAU_AUTO_OPEN=0` | Disable auto-open client |
+| `TAU_CLIENT=browser` | Always open the system browser |
+
+### Desktop app (optional)
+
+Windows shell lives under [`apps/desktop`](./apps/desktop) (Tauri 2). Build once:
+
+```bash
+cd apps/desktop
+npm install
+npm run build
+# → src-tauri/target/release/tau-desktop.exe
+```
+
+Then start Pi as usual; the extension launches `tau-desktop --port <port>` when `client` is `desktop` (default). See [apps/desktop/README.md](./apps/desktop/README.md).
+
+Desktopization is **product-only** (`gzjggg/tau`); it is not mirrored to the upstream PR fork.
 
 ## Fork highlights
 
@@ -146,7 +162,10 @@ Click a session in the sidebar to switch the live Pi TUI session via `switchSess
 | `TAU_MIRROR_PORT` | `38471` | Server port (uncommon by design) |
 | `TAU_HOST` | `127.0.0.1` | Bind address (loopback by default) |
 | `TAU_REMOTE` | `0` | Set `1` to allow LAN/phone (`0.0.0.0` unless `TAU_HOST` is set) |
-| `TAU_AUTO_OPEN` | `1` | Set `0` to skip opening the browser |
+| `TAU_AUTO_OPEN` | `1` | Set `0` to skip opening desktop/browser |
+| `TAU_CLIENT` | `desktop` | `desktop` \| `browser` \| `none` |
+| `TAU_DESKTOP_PATH` | *(search)* | Path to `tau-desktop` executable |
+| `TAU_DESKTOP_FALLBACK` | `browser` | If desktop missing: `browser` or `none` |
 | `TAU_STATIC_DIR` | *(bundled)* | Override static files path |
 | `TAU_DISABLED` | `0` | Set `1` to keep Tau installed but not auto-start |
 | `TAU_USER` / `TAU_PASS` | *(none)* | HTTP Basic Auth (both required) |
@@ -174,6 +193,8 @@ File browser and session delete stay limited to the workspace / sessions directo
   "packages": ["C:/path/to/tau"],
   "tau": {
     "port": 38471,
+    "client": "desktop",
+    "desktopFallback": "browser",
     "remote": true,
     "autoOpenBrowser": true,
     "allowRemoteCommandExecution": false,
@@ -184,6 +205,7 @@ File browser and session delete stay limited to the workspace / sessions directo
 }
 ```
 
+- **`client`**: `desktop` (default) tries Tau Desktop, then falls back per `desktopFallback`
 - **`remote`**: set `true` (or `{ "enabled": true }`) for LAN/Tailscale/phone access; default is loopback-only
 - **`allowRemoteCommandExecution`**: when auth is off, only local clients may run commands unless this is `true`
 - **Basic Auth**: set `user` + `pass`, then enable “Require login” in Settings (or set `authEnabled`)

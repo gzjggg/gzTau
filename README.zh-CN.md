@@ -2,9 +2,9 @@
 
 [English](./README.md) | **简体中文**
 
-在浏览器中镜像 [Pi](https://github.com/badlogic/pi-mono) 终端会话的 Web UI。无需独立服务进程——作为 Pi 扩展运行在现有进程内。
+在浏览器或**桌面窗口**中镜像 [Pi](https://github.com/badlogic/pi-mono) 终端会话的 Web UI。无需独立 Agent 服务——作为 Pi 扩展运行在现有进程内。
 
-本仓库为 [deflating/tau](https://github.com/deflating/tau) 的维护分支，增加了命令系统、Hephaestus 风格会话封面、侧栏会话切换与 UI 打磨。
+本仓库为 [deflating/tau](https://github.com/deflating/tau) 的维护分支，增加了命令系统、Hephaestus 风格会话封面、侧栏会话切换、UI 打磨，以及可选的 **Tau Desktop** 壳（Tauri）。
 
 ![Tau 深色模式](docs/images/dark.png)
 
@@ -67,17 +67,33 @@ pi install git:github.com/gzjggg/tau
 ## 使用
 
 1. 在终端正常启动 Pi  
-2. Tau 自动打开浏览器：`http://127.0.0.1:38471`（状态栏也会显示局域网地址）  
+2. 若已构建桌面端则打开 **Tau Desktop**，否则打开浏览器：`http://127.0.0.1:38471`  
 3. 完成  
 
 | 命令 / 操作 | 说明 |
 |-------------|------|
-| `/tau` | 重新打开 Web UI |
-| `/qr` | 显示手机扫码二维码 |
+| `/tau` | 重新打开 Web UI（浏览器） |
+| `/qr` | 显示手机扫码（需开启远程模式） |
 | `/tau-start` / `/tau-stop` | 启动 / 停止镜像服务 |
 | `/tau-switch` | 挂载会话切换钩子（侧栏切换失败时在终端执行一次） |
-| 关闭 Tau 浏览器标签 | 关闭 Tau 端口并退出 Pi（sendBeacon） |
-| `TAU_AUTO_OPEN=0` | 禁用自动打开浏览器 |
+| 关闭桌面窗口 / 浏览器 | **默认不会**退出 Pi |
+| `TAU_AUTO_OPEN=0` | 禁用自动打开客户端 |
+| `TAU_CLIENT=browser` | 始终用系统浏览器 |
+
+### 桌面应用（可选）
+
+Windows 桌面壳在 [`apps/desktop`](./apps/desktop)（Tauri 2）。构建一次：
+
+```bash
+cd apps/desktop
+npm install
+npm run build
+# → src-tauri/target/release/tau-desktop.exe
+```
+
+之后正常启动 Pi；扩展在 `client` 为 `desktop`（默认）时会执行 `tau-desktop --port <port>`。详见 [apps/desktop/README.md](./apps/desktop/README.md)。
+
+桌面化仅维护在产品仓 `gzjggg/tau`，**不同步**到上游 PR 用的 `tau-pr`。
 
 ## 本分支亮点
 
@@ -146,7 +162,10 @@ pi install git:github.com/gzjggg/tau
 | `TAU_MIRROR_PORT` | `38471` | 服务端口（刻意避开常见端口） |
 | `TAU_HOST` | `127.0.0.1` | 绑定地址（默认仅本机） |
 | `TAU_REMOTE` | `0` | 设为 `1` 允许局域网/手机访问（默认 `0.0.0.0`，除非另设 `TAU_HOST`） |
-| `TAU_AUTO_OPEN` | `1` | 设为 `0` 跳过自动打开浏览器 |
+| `TAU_AUTO_OPEN` | `1` | 设为 `0` 跳过自动打开桌面/浏览器 |
+| `TAU_CLIENT` | `desktop` | `desktop` \| `browser` \| `none` |
+| `TAU_DESKTOP_PATH` | *自动搜索* | `tau-desktop` 可执行文件路径 |
+| `TAU_DESKTOP_FALLBACK` | `browser` | 桌面缺失时：`browser` 或 `none` |
 | `TAU_STATIC_DIR` | *内置* | 覆盖静态资源路径 |
 | `TAU_DISABLED` | `0` | 设为 `1` 安装但不自动启动 |
 | `TAU_USER` / `TAU_PASS` | *无* | HTTP Basic Auth（需同时设置） |
@@ -174,6 +193,8 @@ set TAU_REMOTE=1
   "packages": ["C:/path/to/tau"],
   "tau": {
     "port": 38471,
+    "client": "desktop",
+    "desktopFallback": "browser",
     "remote": true,
     "autoOpenBrowser": true,
     "allowRemoteCommandExecution": false,
@@ -184,6 +205,7 @@ set TAU_REMOTE=1
 }
 ```
 
+- **`client`**：默认 `desktop`，找不到桌面端时按 `desktopFallback` 回退浏览器  
 - **`remote`**：设为 `true`（或 `{ "enabled": true }`）以允许局域网/Tailscale/手机；默认仅本机  
 - **`allowRemoteCommandExecution`**：未启用认证时，仅本地客户端可执行命令，除非设为 `true`  
 - **Basic Auth**：配置 `user` + `pass` 后，在设置里打开「Require login」，或设置 `authEnabled`  
