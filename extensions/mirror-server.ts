@@ -180,6 +180,27 @@ const TAU_REMOTE_ENABLED = TAU_SETTINGS.remoteEnabled;
 const TAU_AUTO_START = TAU_SETTINGS.autoStart;
 const TAU_AUTO_OPEN = TAU_SETTINGS.autoOpenBrowser;
 
+function desktopPathCacheFile(): string {
+  const home = os.homedir() || process.env.USERPROFILE || "";
+  return path.join(home, ".pi", "tau-desktop-path");
+}
+
+function rememberDesktopPath(exe: string): void {
+  try {
+    const f = desktopPathCacheFile();
+    fs.mkdirSync(path.dirname(f), { recursive: true });
+    fs.writeFileSync(f, exe, "utf8");
+  } catch { /* ignore */ }
+}
+
+function readRememberedDesktopPath(): string | null {
+  try {
+    const p = fs.readFileSync(desktopPathCacheFile(), "utf8").trim();
+    if (p && fs.existsSync(p)) return p;
+  } catch { /* ignore */ }
+  return null;
+}
+
 /** Resolve tau-desktop executable for ClientLauncher (Windows first). */
 function findDesktopExecutable(): string | null {
   // @ts-ignore — __dirname provided by jiti
@@ -190,6 +211,10 @@ function findDesktopExecutable(): string | null {
   const candidates = [
     TAU_SETTINGS.desktopPath,
     process.env.TAU_DESKTOP_PATH,
+    readRememberedDesktopPath(),
+    // Stable copy next to package (npm run package → apps/desktop/bin)
+    path.join(pkgRoot, "apps", "desktop", "bin", "tau-desktop.exe"),
+    path.join(pkgRoot, "apps", "desktop", "bin", "Tau.exe"),
     // Dev / local builds next to this package
     path.join(pkgRoot, "apps", "desktop", "src-tauri", "target", "release", "tau-desktop.exe"),
     path.join(pkgRoot, "apps", "desktop", "src-tauri", "target", "debug", "tau-desktop.exe"),
@@ -199,13 +224,12 @@ function findDesktopExecutable(): string | null {
     path.join(localApp, "Programs", "Tau", "tau-desktop.exe"),
     path.join(localApp, "Programs", "Tau", "Tau.exe"),
     path.join(localApp, "Tau", "tau-desktop.exe"),
-    // Start Menu shortcut target sometimes lives under Programs only
     path.join(home, "AppData", "Local", "Programs", "Tau", "tau-desktop.exe"),
   ].filter((p): p is string => typeof p === "string" && p.length > 0);
 
   for (const c of candidates) {
     try {
-      if (fs.existsSync(c)) return c;
+      if (fs.existsSync(c) && fs.statSync(c).isFile()) return c;
     } catch { /* ignore */ }
   }
   return null;
@@ -215,7 +239,7 @@ function findDesktopExecutable(): string | null {
  * Open desktop app and/or browser after server is ready.
  * Default: try desktop, fall back to browser. Never kills Pi on failure.
  */
-function openTauClient(localUrl: string, port: number): void {
+function openTauClient(localUrl: string, port: number, notify?: (msg: string, level?: string) => void): void {
   const kind = TAU_SETTINGS.client;
   if (kind === "none") {
     mlog("[Mirror] client=none — skip auto-open");
@@ -237,14 +261,29 @@ function openTauClient(localUrl: string, port: number): void {
         stdio: "ignore",
         windowsHide: true,
       });
+      child.on("error", (err: Error) => {
+        console.warn("[Mirror] Desktop spawn error:", err.message);
+        if (TAU_SETTINGS.desktopFallback === "browser") {
+          openInBrowser(localUrl);
+        }
+      });
       child.unref();
+      rememberDesktopPath(exe);
       mlog(`[Mirror] Launched desktop: ${exe} --port ${port}`);
+      try {
+        notify?.(`Tau Desktop · :${port}`, "info");
+      } catch { /* ignore */ }
       return;
     } catch (e) {
       console.warn("[Mirror] Desktop launch failed:", (e as Error).message);
     }
   } else {
-    mlog("[Mirror] tau-desktop not found — see apps/desktop README");
+    console.warn(
+      "[Mirror] tau-desktop not found. Build: cd apps/desktop && npm run package  (or install NSIS setup). Falling back."
+    );
+    try {
+      notify?.("Tau Desktop not found — opened browser. Run apps/desktop npm run package", "warning");
+    } catch { /* ignore */ }
   }
 
   if (TAU_SETTINGS.desktopFallback === "browser") {
@@ -2913,14 +2952,19 @@ img{border-radius:12px}a{color:#b87a5c;font-size:18px;margin-top:16px}p{color:rg
         ctx.ui.notify(`Tau ${mirrorUrl}`, "info");
       } catch { /* ignore */ }
 
-      // Auto-open desktop (or browser fallback) once — delayed for leftover-tab beacons
+      // Auto-open desktop (or browser fallback) once — after listen is stable
       if (TAU_AUTO_OPEN && !browserOpenedOnce) {
         browserOpenedOnce = true;
         const localUrl = `http://127.0.0.1:${port}`;
+        // Short delay so health endpoint is ready for desktop connect_port
         setTimeout(() => {
           mlog(`[Mirror] Auto-opening client (${TAU_SETTINGS.client}): ${localUrl}`);
-          openTauClient(localUrl, port);
-        }, 2000);
+          openTauClient(localUrl, port, (msg, level) => {
+            try {
+              ctx.ui.notify(msg, (level as any) || "info");
+            } catch { /* ignore */ }
+          });
+        }, 800);
       }
 
       // Warm command cache + session capture

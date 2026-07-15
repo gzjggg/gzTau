@@ -2667,13 +2667,22 @@ sidebar.loadSessions().then(() => {
 });
 initLauncher();
 
-// PWA service worker — browser only (not Tau Desktop asset shell)
-if (
-  'serviceWorker' in navigator &&
-  !isTauDesktop() &&
-  (location.protocol === 'http:' || location.protocol === 'https:')
-) {
-  navigator.serviceWorker.register('/sw.js').catch(() => {});
+// Service Worker: always unregister.
+// Cached SW was serving Tau shell UI from cache even when Pi/mirror is offline
+// (http://127.0.0.1:38471 still "looked like" Tau after process exit).
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.getRegistrations?.().then((regs) => {
+    for (const r of regs) {
+      void r.unregister();
+    }
+  }).catch(() => {});
+  if (typeof caches !== 'undefined' && caches.keys) {
+    caches.keys().then((keys) => {
+      for (const k of keys) {
+        if (String(k).startsWith('tau')) void caches.delete(k);
+      }
+    }).catch(() => {});
+  }
 }
 
 // Dismiss mobile splash screen

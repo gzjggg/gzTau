@@ -132,8 +132,10 @@ function ensureTitlebar() {
   bar.id = 'desktop-titlebar';
   bar.className = 'desktop-titlebar';
   bar.innerHTML = `
-    <div class="desktop-titlebar-drag" data-tauri-drag-region>
+    <div class="desktop-titlebar-left" data-tauri-drag-region>
       <img class="desktop-titlebar-icon" id="desktop-titlebar-icon" alt="" width="16" height="16" draggable="false" />
+    </div>
+    <div class="desktop-titlebar-center" data-tauri-drag-region>
       <span class="desktop-titlebar-title">Tau</span>
     </div>
     <div class="desktop-titlebar-controls">
@@ -178,7 +180,11 @@ function ensureTitlebar() {
     void windowClose();
   });
 
-  bar.querySelector('.desktop-titlebar-drag')?.addEventListener('dblclick', (e) => {
+  bar.querySelector('.desktop-titlebar-center')?.addEventListener('dblclick', (e) => {
+    if (e.target.closest('button')) return;
+    void windowToggleMaximize();
+  });
+  bar.querySelector('.desktop-titlebar-left')?.addEventListener('dblclick', (e) => {
     if (e.target.closest('button')) return;
     void windowToggleMaximize();
   });

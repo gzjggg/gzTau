@@ -78,3 +78,19 @@ const manifest = {
 };
 fs.writeFileSync(path.join(distDir, "manifest.json"), JSON.stringify(manifest, null, 2));
 console.log("[package] manifest.json written for", product, version);
+
+// Stable path next to source package so path-install finds desktop without NSIS
+const binDir = path.join(desktopRoot, "bin");
+const releaseExe = path.join(
+  desktopRoot,
+  "src-tauri",
+  "target",
+  "release",
+  process.platform === "win32" ? "tau-desktop.exe" : "tau-desktop"
+);
+if (fs.existsSync(releaseExe)) {
+  fs.mkdirSync(binDir, { recursive: true });
+  const binExe = path.join(binDir, path.basename(releaseExe));
+  fs.copyFileSync(releaseExe, binExe);
+  console.log("[package] stable binary →", binExe);
+}
