@@ -264,6 +264,43 @@ export function renderUserMarkdown(text) {
   return html.replace(/\n$/, '');
 }
 
+// Common TLDs for domain-boundary detection in bare-URL autolinking.
+// Used to strip trailing letters glued to a domain (e.g. "https://example.comabc").
+// Not exhaustive — only covers the most frequent TLDs to keep the list short.
+const COMMON_TLDS = new Set([
+  'com','org','net','edu','gov','mil','int','io','dev','app','co','ai','me','tv','cc',
+  'xyz','top','info','biz','name','pro','online','site','tech','store','blog','cloud',
+  'shop','news','media','world','today','live','art','design','wiki','so','sh','gg',
+  'ly','to','gd','pr','im','eu','cn','jp','uk','us','de','fr','ru','br','in','it','nl',
+  'se','no','fi','dk','ch','at','be','es','pt','pl','gr','cz','kr','tw','hk','sg','my',
+  'th','vn','id','ph','nz','au','ca','mx','ar'
+]);
+
+// For a bare-domain URL (scheme://host with no path/query/fragment/port),
+// find the TLD boundary and strip trailing letters glued after the TLD.
+// Returns { url, trail } when trailing letters were stripped, otherwise null.
+function trimDomainTail(url) {
+  const m = url.match(/^(https?:\/\/)([^\/?#]+)$/);
+  if (!m) return null;                 // has path/query/fragment — cannot reliably detect boundary
+  const [, scheme, host] = m;
+  if (host.includes(':')) return null; // has port — skip to avoid misdetecting port glue
+  const hostname = host;
+  const lower = hostname.toLowerCase();
+  let bestEnd = -1;
+  for (const tld of COMMON_TLDS) {
+    const suffix = '.' + tld;
+    const idx = lower.lastIndexOf(suffix);
+    if (idx <= 0) continue;
+    const end = idx + suffix.length;
+    if (end === hostname.length) return null; // TLD already at end — no glue to strip
+    if (end > bestEnd) bestEnd = end;
+  }
+  if (bestEnd > 0) {
+    return { url: scheme + hostname.slice(0, bestEnd), trail: hostname.slice(bestEnd) };
+  }
+  return null;
+}
+
 /** Allow only safe URL schemes for markdown links/images (XSS harden, no UX change for normal URLs). */
 function sanitizeUrl(url) {
   if (!url || typeof url !== 'string') return null;
@@ -346,12 +383,34 @@ function renderInline(text) {
   text = text.replace(/_(.+?)_/g, '<em>$1</em>');
   text = text.replace(/~~(.+?)~~/g, '<del>$1</del>');
 
-  // Auto-link bare http(s) URLs only
-  text = text.replace(/(^|[^"'>])(https?:\/\/[^\s<]+)/g, (_, pre, url) => {
-    const safe = sanitizeUrl(url);
-    if (!safe) return pre + url;
-    return `${pre}<a href="${escapeHtml(safe)}" target="_blank" rel="noopener noreferrer">${escapeHtml(safe)}</a>`;
-  });
+  // Auto-link bare http(s) URLs only.
+  // URL 主体限定为 RFC 3986 ASCII 字符集（自然排除 CJK 汉字、全角标点等），
+  // 避免链接与紧随的中文/标点粘连。由于 .,;:!? 本身也是合法 URL 字符，
+  // 正则贪婪匹配会吞掉尾部句末标点，需在替换函数里从右往左剥回。
+  // 对纯域名 URL（无 path），再用 TLD 边界识别剥离粘连在 TLD 之后的英文字母，
+  // 例如 "https://example.comabc" → 链接 "https://example.com" + 文本 "abc"。
+  // path 后紧接的英文字母无法可靠区分（算法无法判断其是否属于 path），保持原样。
+  // 注意：此处 text 已经过 escapeHtml，URL 中的 & 已变成 &amp;，仍属合法字符。
+  const URL_CHARS = "[A-Za-z0-9\\-._~:/?#\\[\\]@!$&'()*+,;=%]";
+  text = text.replace(
+    new RegExp(`(^|[^"'>])(https?:\\/\\/${URL_CHARS}+)`, 'g'),
+    (_, pre, url) => {
+      let trail = '';
+      while (url && /[.,;:!?]$/.test(url)) {
+        trail = url.slice(-1) + trail;
+        url = url.slice(0, -1);
+      }
+      const trimmed = trimDomainTail(url);
+      if (trimmed) {
+        trail = trimmed.trail + trail;
+        url = trimmed.url;
+      }
+      if (!url) return pre + trail;
+      const safe = sanitizeUrl(url);
+      if (!safe) return pre + url + trail;
+      return `${pre}<a href="${escapeHtml(safe)}" target="_blank" rel="noopener noreferrer">${escapeHtml(safe)}</a>${trail}`;
+    }
+  );
 
   // Restore media, math, inline code
   text = text.replace(/%%MEDIA(\d+)%%/g, (_, idx) => mediaSpans[parseInt(idx)]);
